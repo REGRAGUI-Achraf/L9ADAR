@@ -1,0 +1,54 @@
+const express = require('express');
+const { PrismaClient } = require('@prisma/client');
+
+// PrismaClient is one shared database connection manager for this app.
+// We create it once here so all routes can reuse the same database access object.
+const prisma = new PrismaClient();
+
+function createApp() {
+  const app = express();
+
+  // This tells Express to trust the X-Forwarded-* headers from the gateway.
+  // This is important when the app runs behind Docker or a reverse proxy.
+  app.set('trust proxy', 1);
+
+  // JSON parser: allow only request bodies up to 100 kilobytes.
+  // This is a simple protection against very large payloads.
+  app.use(express.json({ limit: '100kb' }));
+
+  // Basic health check: the process is running.
+  // This endpoint does not touch the database.
+  app.get('/api/health/live', (_req, res) => {
+    res.json({ status: 'ok' });
+  });
+
+  // Readiness check: the app can do its main job correctly.
+  // It verifies that the database is reachable.
+  app.get('/api/health/ready', async (_req, res) => {
+    try {
+      await prisma.$queryRaw`SELECT 1`;
+      res.json({ status: 'ready' });
+    } catch {
+      console.error(JSON.stringify({ level: 'error', msg: 'database check failed' }));
+      res.status(503).json({ status: 'not_ready' });
+    }
+  });
+
+  // ---------------------------------------------------------------------
+  // Add your own routes here.
+  // This is the safest place for custom Express endpoints because it does
+  // not change the existing health checks or database logic above.
+  // ---------------------------------------------------------------------
+  const helloRoutes = require('./routes/helloRoutes');
+  app.use('/api', helloRoutes);
+
+  // If no route matches, return a clear 404 JSON response.
+  // This keeps the API predictable for frontend or other services.
+  app.use((_req, res) => {
+    res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Not found' } });
+  });
+
+  return app;
+}
+
+module.exports = { createApp };
