@@ -19,6 +19,17 @@ services:
       timeout: 3s
       retries: 10
 
+  frontend:
+    build: ./frontend
+    restart: unless-stopped
+    networks:
+      - app
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8080/healthz >/dev/null || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
   ai-service:
     build: ./ai-service/
     restart: unless-stopped
